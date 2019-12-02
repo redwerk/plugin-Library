@@ -284,7 +284,7 @@ implements LiveArchiver<T, SimpleProgress> {
 					insertAsMetadata = false;
 					target = (FreenetURI) task.meta;
 				} else {
-					insertAsMetadata = true;
+					insertAsMetadata = (task.meta != null);
 					target = FreenetURI.EMPTY_CHK_URI;
 				}
 				InsertBlock ib = new InsertBlock(tempB, new ClientMetadata(default_mime), target);

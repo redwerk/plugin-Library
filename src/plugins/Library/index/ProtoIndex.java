@@ -116,6 +116,7 @@ final public class ProtoIndex implements Index {
 		SkeletonMap<Token, TokenFilter> f*/
 		) {
 		reqID = id;
+		insID = FreenetURI.EMPTY_CHK_URI;
 		name = (n == null)? "": n;
 		modified = m;
 		extra = x;
