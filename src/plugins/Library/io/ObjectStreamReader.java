@@ -7,15 +7,14 @@ import java.io.InputStream;
 import java.io.IOException;
 
 /**
-** Simpler version of {@link java.io.ObjectInput} that has only one method.
-**
-** @author infinity0
+* Simpler version of {@link java.io.ObjectInput} that has only one method.
+*
+* @author infinity0
 */
 public interface ObjectStreamReader<T> {
 
 	/**
-	** Read and return the object from the given stream.
+	* Read and return the object from the given stream.
 	*/
-	public T readObject(InputStream is) throws IOException;
-
+	T readObject(InputStream is) throws IOException;
 }

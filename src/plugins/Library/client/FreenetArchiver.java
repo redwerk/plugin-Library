@@ -49,25 +49,23 @@ import freenet.support.api.RandomAccessBucket;
 import freenet.support.io.BucketTools;
 import freenet.support.io.Closer;
 import freenet.support.io.FileBucket;
-import freenet.support.io.ResumeFailedException;
 
 /**
- * * Converts between a map of {@link String} to {@link Object}, and a freenet
- * * key. An {@link ObjectStreamReader} and an {@link ObjectStreamWriter} is
- * * used to do the hard work once the relevant streams have been established,
- * * from temporary {@link Bucket}s.
- * *
- * * Supports a local cache.
- * * FIXME: NOT GARBAGE COLLECTED! Eventually will fill up all available disk space!
- * *
- * * @author infinity0
+ * Converts between a map of {@link String} to {@link Object}, and a freenet
+ * key. An {@link ObjectStreamReader} and an {@link ObjectStreamWriter} is
+ * used to do the hard work once the relevant streams have been established,
+ * from temporary {@link Bucket}s.
+ *
+ * Supports a local cache.
+ * FIXME: NOT GARBAGE COLLECTED! Eventually will fill up all available disk space!
+ *
+ * @author infinity0
  */
-public class FreenetArchiver<T>
-        implements LiveArchiver<T, SimpleProgress> {
+public class FreenetArchiver<T> implements LiveArchiver<T, SimpleProgress> {
 
     final protected NodeClientCore core;
-    final protected ObjectStreamReader reader;
-    final protected ObjectStreamWriter writer;
+    final protected ObjectStreamReader<T> reader;
+    final protected ObjectStreamWriter<T> writer;
 
     final protected String default_mime;
     final protected int expected_bytes;
@@ -81,10 +79,10 @@ public class FreenetArchiver<T>
      * the caller should call waitForAsyncInserts().
      * <p>
      * FIXME SECURITY: This should be relatively safe, because it's all CHKs, as
-     * long as the content isn't easily predictable.
+     *  long as the content isn't easily predictable.
      * <p>
      * FIXME PERFORMANCE: This dirty hack is unnecessary if we split up
-     * IterableSerialiser.push into a start phase and a stop phase.
+     *  IterableSerialiser.push into a start phase and a stop phase.
      * <p>
      * The main purpose of this mechanism is to minimise memory usage: Normally the
      * data being pushed remains in RAM while we do the insert, which can take a very
@@ -92,8 +90,8 @@ public class FreenetArchiver<T>
      */
     static final boolean SEMI_ASYNC_PUSH = true;
 
-    private final HashSet<PushCallback> semiAsyncPushes = new HashSet<PushCallback>();
-    private final ArrayList<InsertException> pushesFailed = new ArrayList<InsertException>();
+    private final HashSet<PushCallback> semiAsyncPushes = new HashSet<>();
+    private final ArrayList<InsertException> pushesFailed = new ArrayList<>();
     private long totalBytesPushing;
 
     public static void setCacheDir(File dir) {
@@ -104,16 +102,15 @@ public class FreenetArchiver<T>
         return cacheDir;
     }
 
-    public FreenetArchiver(NodeClientCore c, ObjectStreamReader r, ObjectStreamWriter w, String mime, int size, short priority) {
+    public FreenetArchiver(NodeClientCore c, ObjectStreamReader<T> r, ObjectStreamWriter<T> w,
+                           String mime, int size, short priority) {
         if (c == null) {
             throw new IllegalArgumentException("Can't create a FreenetArchiver with a null NodeClientCore!");
         }
-        this.priorityClass = priority;
+
+        priorityClass = priority;
         // FIXME pass it in somehow
-        if (priorityClass <= RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS)
-            realTimeFlag = true;
-        else
-            realTimeFlag = false;
+        realTimeFlag = priorityClass <= RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
         core = c;
         reader = r;
         writer = w;
@@ -121,42 +118,43 @@ public class FreenetArchiver<T>
         expected_bytes = size;
     }
 
-    public <S extends ObjectStreamWriter & ObjectStreamReader> FreenetArchiver(NodeClientCore c, S rw, String mime, int size, short priority) {
+    public <S extends ObjectStreamWriter<T> & ObjectStreamReader<T>> FreenetArchiver(NodeClientCore c, S rw,
+                                                                               String mime, int size, short priority) {
         this(c, rw, rw, mime, size, priority);
     }
 
     /**
-     * * {@inheritDoc}
-     * *
-     * * This implementation expects metdata of type {@link FreenetURI}.
+     * {@inheritDoc}
+     *
+     * This implementation expects metdata of type {@link FreenetURI}.
      * <p>
      * FIXME OPT NORM: Two-phase pull: First pull to a bucket, then construct the data.
-     * The reason for this is memory usage: We can limit the number in the second
-     * phase according to downstream demand (e.g. blocking queues in ObjectProcessor's),
-     * so that the amount of stuff kept in memory is limited, while still allowing an
-     * (almost?) unlimited number in the fetching data phase. See comments in ParallelSerialiser.createPullJob.
+     *  The reason for this is memory usage: We can limit the number in the second
+     *  phase according to downstream demand (e.g. blocking queues in ObjectProcessor's),
+     *  so that the amount of stuff kept in memory is limited, while still allowing an
+     *  (almost?) unlimited number in the fetching data phase. See comments in ParallelSerialiser.createPullJob.
      */
-    /*@Override**/
+    @Override
     public void pullLive(PullTask<T> task, final SimpleProgress progress) throws TaskAbortException {
         // FIXME make retry count configgable by client metadata somehow
-        // clearly a web UI fetch wants it limited; a merge might want it unlimited
+        //  clearly a web UI fetch wants it limited; a merge might want it unlimited
         HighLevelSimpleClient hlsc = core.makeClient(priorityClass, false, false);
-        Bucket tempB = null;
+        Bucket tempBucket = null;
         InputStream is = null;
 
         long startTime = System.currentTimeMillis();
 
-        FreenetURI u;
+        FreenetURI uri;
         byte[] initialMetadata;
         String cacheKey;
 
         if (task.meta instanceof FreenetURI) {
-            u = (FreenetURI) task.meta;
+            uri = (FreenetURI) task.meta;
             initialMetadata = null;
-            cacheKey = u.toString(false, true);
+            cacheKey = uri.toString(false, true);
         } else {
             initialMetadata = (byte[]) task.meta;
-            u = FreenetURI.EMPTY_CHK_URI;
+            uri = FreenetURI.EMPTY_CHK_URI;
             cacheKey = Base64.encode(SHA256.digest(initialMetadata));
         }
 
@@ -169,17 +167,17 @@ public class FreenetArchiver<T>
                     if (cacheDir != null && cacheDir.exists() && cacheDir.canRead()) {
                         File cached = new File(cacheDir, cacheKey);
                         if (cached.exists() && cached.length() != 0) {
-                            tempB = new FileBucket(cached, true, false, false, false);
+                            tempBucket = new FileBucket(cached, true, false, false, false);
                             Logger.debug(this, "Fetching block for FreenetArchiver from disk cache: " + cacheKey);
                         }
                     }
 
-                    if (tempB == null) {
+                    if (tempBucket == null) {
 
                         if (initialMetadata != null)
                             Logger.debug(this, "Fetching block for FreenetArchiver from metadata (" + cacheKey + ")");
                         else
-                            Logger.debug(this, "Fetching block for FreenetArchiver from network: " + u);
+                            Logger.debug(this, "Fetching block for FreenetArchiver from network: " + uri);
 
                         if (progress != null) {
                             hlsc.addEventHook(new SimpleProgressUpdater(progress));
@@ -201,7 +199,7 @@ public class FreenetArchiver<T>
                             if (initialMetadata != null)
                                 res = hlsc.fetchFromMetadata(new SimpleReadOnlyArrayBucket(initialMetadata));
                             else
-                                res = hlsc.fetch(u);
+                                res = hlsc.fetch(uri);
                             ProgressParts prog_new = progress.getParts();
                             if (prog_old.known - prog_old.done != prog_new.known - prog_new.done) {
                                 Logger.error(this, "Inconsistency when tracking split file progress (pulling): " + prog_old.known + " of " + prog_old.done + " -> " + prog_new.known + " of " + prog_new.done);
@@ -212,10 +210,10 @@ public class FreenetArchiver<T>
                             if (initialMetadata != null)
                                 res = hlsc.fetchFromMetadata(new SimpleReadOnlyArrayBucket(initialMetadata));
                             else
-                                res = hlsc.fetch(u);
+                                res = hlsc.fetch(uri);
                         }
 
-                        tempB = res.asBucket();
+                        tempBucket = res.asBucket();
                     } else {
                         // Make sure SimpleProgress.join() doesn't stall.
                         if (progress != null) {
@@ -225,13 +223,13 @@ public class FreenetArchiver<T>
                     }
                     long endTime = System.currentTimeMillis();
                     Logger.debug(this, "Fetched block for FreenetArchiver in " + (endTime - startTime) + "ms.");
-                    is = tempB.getInputStream();
-                    task.data = (T) reader.readObject(is);
+                    is = tempBucket.getInputStream();
+                    task.data = reader.readObject(is);
                     is.close();
 
                 } catch (FetchException e) {
                     if (e.mode == FetchExceptionMode.PERMANENT_REDIRECT && e.newURI != null) {
-                        u = e.newURI;
+                        uri = e.newURI;
                         continue;
                     }
                     throw new TaskAbortException("Failed to fetch content", e, true);
@@ -251,40 +249,39 @@ public class FreenetArchiver<T>
 
             } finally {
                 Closer.close(is);
-                Closer.close(tempB);
+                Closer.close(tempBucket);
             }
             break;
         }
     }
 
     /**
-     * * {@inheritDoc}
-     * *
-     * * This implementation produces metdata of type {@link FreenetURI}.
-     * *
-     * * If the input metadata is an insert URI (SSK or USK), it will be replaced
-     * * by its corresponding request URI. Otherwise, the data will be inserted
-     * * as a CHK. Note that since {@link FreenetURI} is immutable, the {@link
-     * * FreenetURI#suggestedEdition} of a USK is '''not''' automatically
-     * * incremented.
+     * {@inheritDoc}
+     *
+     * This implementation produces metdata of type {@link FreenetURI}.
+     *
+     * If the input metadata is an insert URI (SSK or USK), it will be replaced
+     * by its corresponding request URI. Otherwise, the data will be inserted
+     * as a CHK. Note that since {@link FreenetURI} is immutable, the {@link
+     * FreenetURI#suggestedEdition} of a USK is '''not''' automatically
+     * incremented.
      */
-    /*@Override**/
+    @Override
     public void pushLive(PushTask<T> task, final SimpleProgress progress) throws TaskAbortException {
         HighLevelSimpleClient hlsc = core.makeClient(priorityClass, false, false);
-        RandomAccessBucket tempB = null;
+        RandomAccessBucket tempBucket = null;
         OutputStream os = null;
 
-
         try {
-            ClientPutter putter = null;
+            ClientPutter putter;
             PushCallback cb = null;
             try {
-                tempB = core.tempBucketFactory.makeBucket(expected_bytes, 2);
-                os = tempB.getOutputStream();
+                tempBucket = core.tempBucketFactory.makeBucket(expected_bytes, 2);
+                os = tempBucket.getOutputStream();
                 writer.writeObject(task.data, os);
                 os.close();
                 os = null;
-                tempB.setReadOnly();
+                tempBucket.setReadOnly();
 
                 boolean insertAsMetadata;
                 FreenetURI target;
@@ -296,7 +293,7 @@ public class FreenetArchiver<T>
                     insertAsMetadata = (task.meta != null);
                     target = FreenetURI.EMPTY_CHK_URI;
                 }
-                InsertBlock ib = new InsertBlock(tempB, new ClientMetadata(default_mime), target);
+                InsertBlock ib = new InsertBlock(tempBucket, new ClientMetadata(default_mime), target);
 
                 Logger.debug(this, "Inserting block for FreenetArchiver...");
                 long startTime = System.currentTimeMillis();
@@ -315,7 +312,7 @@ public class FreenetArchiver<T>
                     prog_old = progress.getParts();
 
                 // FIXME make retry count configgable by client metadata somehow
-                // unlimited for push/merge
+                //  unlimited for push/merge
                 InsertContext ctx = hlsc.getInsertContext(false);
                 ctx.maxInsertRetries = -1;
                 // Early encode is normally a security risk.
@@ -344,11 +341,9 @@ public class FreenetArchiver<T>
                         ctx, priorityClass,
                         false, null, false, core.clientContext, null, insertAsMetadata ? CHKBlock.DATA_LENGTH : -1);
                 cb.setPutter(putter);
-                long tStart = System.currentTimeMillis();
                 try {
                     core.clientContext.start(putter);
-                } catch (PersistenceDisabledException e) {
-                    // Impossible
+                } catch (PersistenceDisabledException e) { // Impossible
                 }
                 WAIT_STATUS status = cb.waitFor();
                 if (status == WAIT_STATUS.FAILED) {
@@ -357,14 +352,16 @@ public class FreenetArchiver<T>
                     FreenetURI uri = cb.getURI();
                     task.meta = uri;
                     cacheKey = uri.toString(false, true);
-                    Logger.debug(this, "Got URI for asynchronous insert: " + uri + " size " + tempB.size() + " in " + (System.currentTimeMillis() - cb.startTime));
+                    Logger.debug(this, "Got URI for asynchronous insert: " + uri + " size " + tempBucket.size() +
+                            " in " + (System.currentTimeMillis() - cb.startTime));
                 } else {
                     Bucket data = cb.getGeneratedMetadata();
                     byte[] buf = BucketTools.toByteArray(data);
                     data.free();
                     task.meta = buf;
                     cacheKey = Base64.encode(SHA256.digest(buf));
-                    Logger.debug(this, "Got generated metadata (" + buf.length + " bytes) for asynchronous insert size " + tempB.size() + " in " + (System.currentTimeMillis() - cb.startTime));
+                    Logger.debug(this, "Got generated metadata (" + buf.length + " bytes) for asynchronous " +
+                            "insert size " + tempBucket.size() + " in " + (System.currentTimeMillis() - cb.startTime));
                 }
                 if (progress != null)
                     progress.addPartDone();
@@ -373,8 +370,11 @@ public class FreenetArchiver<T>
                 if (progress != null) {
                     ProgressParts prog_new = progress.getParts();
                     if (prog_old.known - prog_old.done != prog_new.known - prog_new.done) {
-                        Logger.error(this, "Inconsistency when tracking split file progress (pushing): " + prog_old.known + " of " + prog_old.done + " -> " + prog_new.known + " of " + prog_new.done);
-                        System.err.println("Inconsistency when tracking split file progress (pushing): " + prog_old.known + " of " + prog_old.done + " -> " + prog_new.known + " of " + prog_new.done);
+                        String msg = "Inconsistency when tracking split file progress (pushing): " +
+                                prog_old.known + " of " + prog_old.done + " -> " +
+                                prog_new.known + " of " + prog_new.done;
+                        Logger.error(this, msg);
+                        System.err.println(msg);
                     }
                 }
 
@@ -383,18 +383,16 @@ public class FreenetArchiver<T>
                 if (cacheKey != null && cacheDir != null && cacheDir.exists() && cacheDir.canRead()) {
                     File cached = new File(cacheDir, cacheKey);
                     Bucket cachedBucket = new FileBucket(cached, false, false, false, false);
-                    BucketTools.copy(tempB, cachedBucket);
+                    BucketTools.copy(tempBucket, cachedBucket);
                 }
 
                 if (SEMI_ASYNC_PUSH)
-                    tempB = null; // Don't free it here.
+                    tempBucket = null; // Don't free it here.
 
             } catch (InsertException e) {
-                if (cb != null) {
-                    synchronized (this) {
-                        if (semiAsyncPushes.remove(cb))
-                            totalBytesPushing -= cb.size();
-                    }
+                synchronized (this) {
+                    if (semiAsyncPushes.remove(cb))
+                        totalBytesPushing -= cb.size();
                 }
                 throw new TaskAbortException("Failed to insert content", e, true);
 
@@ -413,7 +411,7 @@ public class FreenetArchiver<T>
 
         } finally {
             Closer.close(os);
-            Closer.close(tempB);
+            Closer.close(tempBucket);
         }
     }
 
@@ -459,8 +457,7 @@ public class FreenetArchiver<T>
             while (generatedURI == null && generatedMetadata == null && failed == null) {
                 try {
                     wait();
-                } catch (InterruptedException e) {
-                    // Ignore
+                } catch (InterruptedException e) { // Ignore
                 }
             }
             if (failed != null) return WAIT_STATUS.FAILED;
@@ -482,7 +479,8 @@ public class FreenetArchiver<T>
 
         @Override
         public void onFailure(InsertException e, BaseClientPutter state) {
-            Logger.error(this, "Failed background insert (" + generatedURI + "), now running: " + semiAsyncPushes.size() + " (" + SizeUtil.formatSize(totalBytesPushing) + ").");
+            Logger.error(this, "Failed background insert (" + generatedURI +
+                    "), now running: " + semiAsyncPushes.size() + " (" + SizeUtil.formatSize(totalBytesPushing) + ").");
             synchronized (this) {
                 failed = e;
                 notifyAll();
@@ -498,8 +496,7 @@ public class FreenetArchiver<T>
         }
 
         @Override
-        public void onFetchable(BaseClientPutter state) {
-            // Ignore
+        public void onFetchable(BaseClientPutter state) { // Ignore
         }
 
         @Override
@@ -513,13 +510,14 @@ public class FreenetArchiver<T>
             synchronized (FreenetArchiver.this) {
                 if (semiAsyncPushes.remove(this))
                     totalBytesPushing -= size;
-                Logger.debug(this, "Completed background insert (" + generatedURI + ") in " + (System.currentTimeMillis() - startTime) + "ms, now running: " + semiAsyncPushes.size() + " (" + SizeUtil.formatSize(totalBytesPushing) + ").");
+                Logger.debug(this, "Completed background insert (" + generatedURI + ") in " +
+                        (System.currentTimeMillis() - startTime) + "ms, now running: " + semiAsyncPushes.size() +
+                        " (" + SizeUtil.formatSize(totalBytesPushing) + ").");
                 FreenetArchiver.this.notifyAll();
             }
             if (ib != null)
                 ib.free();
 //			if(progress != null) progress.addPartKnown(0, true);
-
         }
 
         @Override
@@ -530,8 +528,7 @@ public class FreenetArchiver<T>
         }
 
         @Override
-        public void onResume(ClientContext context) throws ResumeFailedException {
-            // Ignore.
+        public void onResume(ClientContext context) { // Ignore.
         }
 
         @Override
@@ -542,12 +539,12 @@ public class FreenetArchiver<T>
     }
 
 
-    /*@Override**/
+    @Override
     public void pull(PullTask<T> task) throws TaskAbortException {
         pullLive(task, null);
     }
 
-    /*@Override**/
+    @Override
     public void push(PushTask<T> task) throws TaskAbortException {
         pushLive(task, null);
     }
@@ -610,11 +607,11 @@ public class FreenetArchiver<T>
                     Logger.debug(this, "Asynchronous inserts completed.");
                     return; // Completed all pushes.
                 }
-                Logger.debug(this, "Waiting for " + semiAsyncPushes.size() + " asynchronous inserts (" + SizeUtil.formatSize(totalBytesPushing) + ")...");
+                Logger.debug(this, "Waiting for " + semiAsyncPushes.size() + " asynchronous inserts (" +
+                        SizeUtil.formatSize(totalBytesPushing) + ")...");
                 try {
                     wait();
-                } catch (InterruptedException e) {
-                    // Ignore
+                } catch (InterruptedException e) { // Ignore
                 }
             }
         }
