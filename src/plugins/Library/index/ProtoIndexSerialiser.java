@@ -111,8 +111,9 @@ implements Archiver<ProtoIndex>,
 		return trans;
 	}
 
-	/*@Override**/ public void pull(PullTask<ProtoIndex> task) throws TaskAbortException {
-		PullTask<Map<String, Object>> serialisable = new PullTask<Map<String, Object>>(task.meta);
+	@Override
+	public void pull(PullTask<ProtoIndex> task) throws TaskAbortException {
+		PullTask<Map<String, Object>> serialisable = new PullTask<>(task.meta);
 		subsrl.pull(serialisable);
 		task.meta = serialisable.meta;
 		if (task.meta instanceof FreenetURI) { // if not FreenetURI, skip this silently so we can test on local files
@@ -186,38 +187,41 @@ implements Archiver<ProtoIndex>,
 			return map;
 		}
 
-		/*@Override**/ public ProtoIndex rev(Map<String, Object> map) throws DataFormatException {
+		@Override
+		public ProtoIndex rev(Map<String, Object> map) throws DataFormatException {
 			long magic = (Long)map.get("serialVersionUID");
 
 			if (magic == ProtoIndex.serialVersionUID) {
 				try {
 					// FIXME yet more hacks related to the lack of proper asynchronous FreenetArchiver...
-					ProtoIndexComponentSerialiser cmpsrl = ProtoIndexComponentSerialiser.get((Integer)map.get("serialFormatUID"), subsrl);
-					FreenetURI reqID = (FreenetURI)map.get("reqID");
-					String name = (String)map.get("name");
-					String ownerName = (String)map.get("ownerName");
-					String ownerEmail = (String)map.get("ownerEmail");
-					// FIXME yaml idiocy??? It seems to give a Long if the number is big enough to need one, and an Integer otherwise.
+					ProtoIndexComponentSerialiser cmpsrl =
+							ProtoIndexComponentSerialiser.get((Integer)map.get("serialFormatUID"), subsrl);
+					FreenetURI reqID = (FreenetURI) map.get("reqID");
+					String name = (String) map.get("name");
+					String ownerName = (String) map.get("ownerName");
+					String ownerEmail = (String) map.get("ownerEmail");
+					// FIXME yaml idiocy???
+					//  It seems to give a Long if the number is big enough to need one, and an Integer otherwise.
 					long totalPages;
 					Object o = map.get("totalPages");
 					if(o instanceof Long)
-						totalPages = (Long)o;
+						totalPages = (Long) o;
 					else // Integer
-						totalPages = (Integer)o;
-					Date modified = (Date)map.get("modified");
-					Map<String, Object> extra = (Map<String, Object>)map.get("extra");
-					SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>> utab = utrans.rev((Map<String, Object>)map.get("utab"));
-					SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>> ttab = ttrans.rev((Map<String, Object>)map.get("ttab"));
+						totalPages = (Integer) o;
+					Date modified = (Date) map.get("modified");
+					Map<String, Object> extra = (Map<String, Object>) map.get("extra");
+					SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>> utab =
+							utrans.rev((Map<String, Object>) map.get("utab"));
+					SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>> ttab =
+							ttrans.rev((Map<String, Object>) map.get("ttab"));
 
-					return cmpsrl.setSerialiserFor(new ProtoIndex(reqID, name, ownerName, ownerEmail, totalPages, modified, extra, utab, ttab));
-
+					return cmpsrl.setSerialiserFor(
+							new ProtoIndex(reqID, name, ownerName, ownerEmail, totalPages, modified, extra, utab, ttab));
 				} catch (ClassCastException e) {
 					// TODO LOW maybe find a way to pass the actual bad data to the exception
 					throw new DataFormatException("Badly formatted data", e, null);
-
 				} catch (UnsupportedOperationException e) {
 					throw new DataFormatException("Unrecognised format ID", e, map.get("serialFormatUID"), map, "serialFormatUID");
-
 				}
 
 			} else {
