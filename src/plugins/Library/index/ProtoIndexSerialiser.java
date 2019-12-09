@@ -3,6 +3,7 @@
  * http://www.gnu.org/ for further details of the GPL. */
 package plugins.Library.index;
 
+import freenet.support.Logger;
 import plugins.Library.Library;
 import plugins.Library.client.FreenetArchiver;
 import plugins.Library.util.SkeletonBTreeMap;
@@ -48,11 +49,9 @@ implements Archiver<ProtoIndex>,
 	final public static String MIME_TYPE = YamlReaderWriter.MIME_TYPE;
 	final public static String FILE_EXTENSION = YamlReaderWriter.FILE_EXTENSION;
 
-	final protected Translator<ProtoIndex, Map<String, Object>>
-	trans;
+	final protected Translator<ProtoIndex, Map<String, Object>> trans;
 
-	final protected LiveArchiver<Map<String, Object>, SimpleProgress> 
-	subsrl;
+	final protected LiveArchiver<Map<String, Object>, SimpleProgress>  subsrl;
 
 	public ProtoIndexSerialiser(LiveArchiver<Map<String, Object>, SimpleProgress> s) {
 		subsrl = s;
@@ -60,10 +59,10 @@ implements Archiver<ProtoIndex>,
 	}
 
 	/* FIXME HIGH: Parallelism in fetching multiple words for the same query.
-	 * A single serialiser means when we fetch two words for the same query, and they both end up in the same
-	 * bucket, we get an AssertionError when we fetch the bucket twice in ProgressTracker.addPullProgress.
-	 * So the solution, for the time being, is simply to use two separate serialisers. */
-	
+	 *  A single serialiser means when we fetch two words for the same query, and they both end up in the same
+	 *  bucket, we get an AssertionError when we fetch the bucket twice in ProgressTracker.addPullProgress.
+	 *  So the solution, for the time being, is simply to use two separate serialisers. */
+
 //	final protected static HashMap<Class<?>, ProtoIndexSerialiser>
 //	srl_cls = new HashMap<Class<?>, ProtoIndexSerialiser>();
 
@@ -133,22 +132,21 @@ implements Archiver<ProtoIndex>,
 		task.meta = serialisable.meta;
 	}
 
-	public static class IndexTranslator
-	implements Translator<ProtoIndex, Map<String, Object>> {
+	public static class IndexTranslator implements Translator<ProtoIndex, Map<String, Object>> {
 
 		/**
-		** Term-table translator
+		* Term-table translator
 		*/
-		Translator<SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>>, Map<String, Object>> ttrans = new
-		SkeletonBTreeMap.TreeTranslator<String, SkeletonBTreeSet<TermEntry>>(null, new
-		ProtoIndexComponentSerialiser.TreeMapTranslator<String, SkeletonBTreeSet<TermEntry>>(null));
+		Translator<SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>>, Map<String, Object>> ttrans =
+				new SkeletonBTreeMap.TreeTranslator<>(null,
+						new ProtoIndexComponentSerialiser.TreeMapTranslator<>(null));
 
 		/**
-		** URI-table translator
+		* URI-table translator
 		*/
-		Translator<SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>, Map<String, Object>> utrans = new
-		SkeletonBTreeMap.TreeTranslator<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>(null, new
-		ProtoIndexComponentSerialiser.TreeMapTranslator<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>(null));
+		Translator<SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>, Map<String, Object>> utrans =
+				new SkeletonBTreeMap.TreeTranslator<>(null,
+						new ProtoIndexComponentSerialiser.TreeMapTranslator<>(null));
 
 		private LiveArchiver<Map<String, Object>, SimpleProgress> subsrl;
 		
@@ -210,8 +208,10 @@ implements Archiver<ProtoIndex>,
 						totalPages = (Integer) o;
 					Date modified = (Date) map.get("modified");
 					Map<String, Object> extra = (Map<String, Object>) map.get("extra");
+					Logger.debug(this, "Start URI-table Backward translation");
 					SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>> utab =
 							utrans.rev((Map<String, Object>) map.get("utab"));
+					Logger.debug(this, "Start Term-table Backward translation");
 					SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>> ttab =
 							ttrans.rev((Map<String, Object>) map.get("ttab"));
 

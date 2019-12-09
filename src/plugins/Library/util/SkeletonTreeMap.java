@@ -85,21 +85,25 @@ implements Map<K, V>, SortedMap<K, V>, SkeletonMap<K, V>, Cloneable {
 	}
 
 	/**
-	** Set the metadata for the {@link SkeletonValue} for a given key.
+	* Set the metadata for the {@link SkeletonValue} for a given key.
 	*/
-	public Object putGhost(K key, Object o) {
-		if(key == null) throw new IllegalArgumentException("No null keys");
-		if (o == null) {
-			throw new IllegalArgumentException("Cannot put a null dummy into the map. Use put(K, V) to mark an object as loaded.");
+	public void putGhost(K key, Object o) {
+		if(key == null) {
+			throw new IllegalArgumentException("No null keys");
 		}
+		if (o == null) {
+			throw new IllegalArgumentException("Cannot put a null dummy into the map. " +
+					"Use put(K, V) to mark an object as loaded.");
+		}
+
 		SkeletonValue<V> sk = skmap.get(key);
-		if (sk == null) { 
-			skmap.put(key, sk = new SkeletonValue<V>(null, o, false));
-			++ghosts; // One new ghost
-			return null;
+		if (sk == null) {
+			skmap.put(key, new SkeletonValue<>(null, o, false));
+			ghosts++; // One new ghost
 		} else {
-			if (sk.isLoaded()) { ++ghosts; }
-			return sk.setGhost(o);
+			if (sk.isLoaded()) {
+				ghosts++;
+			}
 		}
 	}
 
@@ -285,24 +289,26 @@ implements Map<K, V>, SortedMap<K, V>, SkeletonMap<K, V>, Cloneable {
 	implements Translator<SkeletonTreeMap<K, V>, Map<String, Object>> {
 
 		/**
-		** Forward translation. If the translator is given is {@code null},
-		** it will use {@link Object#toString()}.
-		**
-		** @param map The data structue to translate
-		** @param intm A map to populate with the translated mappings
-		** @param ktr An optional translator between key and {@link String}.
+		* Forward translation. If the translator is given is {@code null},
+		* it will use {@link Object#toString()}.
+		*
+		* @param map The data structue to translate
+		* @param intm A map to populate with the translated mappings
+		* @param keyTranslator An optional translator between key and {@link String}.
 		*/
-		public static <K, V> Map<String, Object> app(SkeletonTreeMap<K, V> map, Map<String, Object> intm, Translator<K, String> ktr) {
+		public static <K, V> Map<String, Object> app(SkeletonTreeMap<K, V> map, Map<String, Object> intm,
+													 Translator<K, String> keyTranslator) {
 			if (!map.isBare()) {
 				throw new IllegalArgumentException("Data structure is not bare. Try calling deflate() first.");
 			}
 			if (map.comparator() != null) {
 				throw new UnsupportedOperationException("Sorry, this translator does not (yet) support comparators");
 			}
+
 			// FIXME LOW maybe get rid of intm and just always use HashMap
-			if (ktr != null) {
+			if (keyTranslator != null) {
 				for (Map.Entry<K, SkeletonValue<V>> en: map.skmap.entrySet()) {
-					intm.put(ktr.app(en.getKey()), en.getValue().meta());
+					intm.put(keyTranslator.app(en.getKey()), en.getValue().meta());
 				}
 			} else {
 				for (Map.Entry<K, SkeletonValue<V>> en: map.skmap.entrySet()) {
@@ -313,25 +319,27 @@ implements Map<K, V>, SortedMap<K, V>, SkeletonMap<K, V>, Cloneable {
 		}
 
 		/**
-		** Backward translation. If no translator is given, a direct cast will
-		** be attempted.
-		**
-		** @param intm The map of translated mappings to extract
-		** @param map The data structue to populate with metadata
-		** @param ktr A translator between key and {@link String}
+		* Backward translation. If no translator is given, a direct cast will
+		* be attempted.
+		*
+		* @param intm The map of translated mappings to extract
+		* @param map The data structue to populate with metadata
+		* @param keyTranslator A translator between key and {@link String}
 		*/
-		public static <K, V> SkeletonTreeMap<K, V> rev(Map<String, Object> intm, SkeletonTreeMap<K, V> map, Translator<K, String> ktr) throws DataFormatException {
-			if (ktr == null) {
+		public static <K, V> SkeletonTreeMap<K, V> rev(Map<String, Object> intm, SkeletonTreeMap<K, V> map,
+													   Translator<K, String> keyTranslator) throws DataFormatException {
+			if (keyTranslator == null) {
 				try {
 					for (Map.Entry<String, Object> en: intm.entrySet()) {
-						map.putGhost((K)en.getKey(), en.getValue());
+						map.putGhost((K) en.getKey(), en.getValue());
 					}
 				} catch (ClassCastException e) {
-					throw new DataFormatException("TreeMapTranslator: reverse translation failed. Try supplying a non-null key-translator.", e, intm, null, null);
+					throw new DataFormatException("TreeMapTranslator: reverse translation failed. " +
+							"Try supplying a non-null key-translator.", e, intm, null, null);
 				}
 			} else {
 				for (Map.Entry<String, Object> en: intm.entrySet()) {
-					map.putGhost(ktr.rev(en.getKey()), en.getValue());
+					map.putGhost(keyTranslator.rev(en.getKey()), en.getValue());
 				}
 			}
 			return map;

@@ -24,9 +24,9 @@ public interface Translator<T, I> {
 	** particularly with regards to throwing {@link IllegalArgumentException}.
 	**
 	** TODO LOW maybe this could throw {@link DataFormatException} like {@link
-	** #rev(Object)}? (probably no point...)
+	**  #rev(Object)}? (probably no point...)
 	*/
-	I app(T translatee);// throws DataFormatException;
+	I app(T translatee); // throws DataFormatException;
 
 	/**
 	** Reverse the translation.

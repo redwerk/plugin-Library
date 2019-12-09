@@ -67,10 +67,10 @@ public class ProtoIndexComponentSerialiser {
 	final protected static YamlReaderWriter yamlrw = new YamlReaderWriter();
 
 	/**
-	** Translator for the local entries of a node of the ''term table''.
+	* Translator for the local entries of a node of the ''term table''.
 	*/
 	final protected static Translator<SkeletonTreeMap<String, SkeletonBTreeSet<TermEntry>>, Map<String, Object>>
-	ttab_keys_mtr = new TreeMapTranslator<String, SkeletonBTreeSet<TermEntry>>(null);
+			ttab_keys_mtr = new TreeMapTranslator<>(null);
 
 	/**
 	** Translator for the local entries of a node of the ''B-tree'' for a
@@ -89,10 +89,10 @@ public class ProtoIndexComponentSerialiser {
 	};
 
 	/**
-	** Translator for the local entries of a node of the ''uri table''.
+	* Translator for the local entries of a node of the ''uri table''.
 	*/
 	final protected static Translator<SkeletonTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>, Map<String, Object>>
-	utab_keys_mtr = new TreeMapTranslator<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>(utab_keys_ktr);
+			utab_keys_mtr = new TreeMapTranslator<>(utab_keys_ktr);
 
 	/**
 	** Serialiser for the ''targets'' of the values stored in a node of the
@@ -304,26 +304,27 @@ public class ProtoIndexComponentSerialiser {
 	}
 
 
-	/************************************************************************
-	** Generic {@link SkeletonTreeMap} translator.
-	**
-	** @author infinity0
+	/**
+	* Generic {@link SkeletonTreeMap} translator.
+	*
+	* @author infinity0
 	*/
-	public static class TreeMapTranslator<K, V>
-	extends SkeletonTreeMap.TreeMapTranslator<K, V> {
+	public static class TreeMapTranslator<K, V> extends SkeletonTreeMap.TreeMapTranslator<K, V> {
 
-		final protected Translator<K, String> ktr;
+		final protected Translator<K, String> keyTranslator;
 
-		public TreeMapTranslator(Translator<K, String> k) {
-			ktr = k;
+		public TreeMapTranslator(Translator<K, String> keyTranslator) {
+			this.keyTranslator = keyTranslator;
 		}
 
-		/*@Override**/ public Map<String, Object> app(SkeletonTreeMap<K, V> map) {
-			return app(map, new TreeMap<String, Object>(), ktr);
+		@Override
+		public Map<String, Object> app(SkeletonTreeMap<K, V> map) {
+			return app(map, new TreeMap<>(), keyTranslator);
 		}
 
-		/*@Override**/ public SkeletonTreeMap<K, V> rev(Map<String, Object> map) throws DataFormatException {
-			return rev(map, new SkeletonTreeMap<K, V>(), ktr);
+		@Override
+		public SkeletonTreeMap<K, V> rev(Map<String, Object> map) throws DataFormatException {
+			return rev(map, new SkeletonTreeMap<>(), keyTranslator);
 		}
 	}
 
