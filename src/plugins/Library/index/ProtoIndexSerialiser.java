@@ -137,95 +137,100 @@ implements Archiver<ProtoIndex>,
 		/**
 		* Term-table translator
 		*/
-		Translator<SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>>, Map<String, Object>> ttrans =
+		// TODO: reverse translation failed (p2)
+		//  "TaskAbortException: Could not construct index from data : TreeMapTranslator:
+		//  reverse translation failed. Try supplying a non-null key-translator."
+		Translator<SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>>, Map<String, Object>> termTableTranslator =
 				new SkeletonBTreeMap.TreeTranslator<>(null,
 						new ProtoIndexComponentSerialiser.TreeMapTranslator<>(null));
 
 		/**
 		* URI-table translator
 		*/
-		Translator<SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>, Map<String, Object>> utrans =
+		Translator<SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>>, Map<String, Object>> uriTableTranslator =
 				new SkeletonBTreeMap.TreeTranslator<>(null,
 						new ProtoIndexComponentSerialiser.TreeMapTranslator<>(null));
 
 		private LiveArchiver<Map<String, Object>, SimpleProgress> subsrl;
-		
+
 		public IndexTranslator(LiveArchiver<Map<String, Object>, SimpleProgress> subsrl) {
 			this.subsrl = subsrl;
 		}
 
 		/**
-		** {@inheritDoc}
-		**
-		** Note: the resulting map will contain the insert SSK URI under the
-		** key {@code insID}. The intention is for push methods to remove this
-		** and add it to the task metadata. '''Failure to do this could result
-		** in the insert URI being published'''.
-		**
-		** FIXME NORM maybe make this more secure, eg. wrap it in a
-		** UnserialisableWrapper or something that makes YAML throw an
-		** exception if it is accidentally passed to it.
+		* {@inheritDoc}
+		*
+		* Note: the resulting map will contain the insert SSK URI under the
+		* key {@code insID}. The intention is for push methods to remove this
+		* and add it to the task metadata. '''Failure to do this could result
+		* in the insert URI being published'''.
+		*
+		* FIXME NORM maybe make this more secure, eg. wrap it in a
+		*  UnserialisableWrapper or something that makes YAML throw an
+		*  exception if it is accidentally passed to it.
 		*/
-		/*@Override**/ public Map<String, Object> app(ProtoIndex idx) {
+		@Override
+		public Map<String, Object> app(ProtoIndex idx) {
 			if (!idx.ttab.isBare() || !idx.utab.isBare()) {
 				throw new IllegalArgumentException("Data structure is not bare. Try calling deflate() first.");
 			}
-			Map<String, Object> map = new LinkedHashMap<String, Object>();
+
+			Map<String, Object> map = new LinkedHashMap<>();
 			map.put("serialVersionUID", idx.serialVersionUID);
 			map.put("serialFormatUID", idx.serialFormatUID);
 			map.put("insID", idx.insID);
 			map.put("name", idx.name);
 			map.put("ownerName", idx.indexOwnerName);
 			map.put("ownerEmail", idx.indexOwnerEmail);
-			map.put("totalPages", new Long(idx.totalPages));
+			map.put("totalPages", idx.totalPages);
 			map.put("modified", idx.modified);
 			map.put("extra", idx.extra);
-			map.put("utab", utrans.app(idx.utab));
-			map.put("ttab", ttrans.app(idx.ttab));
+			map.put("utab", uriTableTranslator.app(idx.utab));
+			map.put("ttab", termTableTranslator.app(idx.ttab));
 			return map;
 		}
 
 		@Override
 		public ProtoIndex rev(Map<String, Object> map) throws DataFormatException {
-			long magic = (Long)map.get("serialVersionUID");
-
-			if (magic == ProtoIndex.serialVersionUID) {
-				try {
-					// FIXME yet more hacks related to the lack of proper asynchronous FreenetArchiver...
-					ProtoIndexComponentSerialiser cmpsrl =
-							ProtoIndexComponentSerialiser.get((Integer)map.get("serialFormatUID"), subsrl);
-					FreenetURI reqID = (FreenetURI) map.get("reqID");
-					String name = (String) map.get("name");
-					String ownerName = (String) map.get("ownerName");
-					String ownerEmail = (String) map.get("ownerEmail");
-					// FIXME yaml idiocy???
-					//  It seems to give a Long if the number is big enough to need one, and an Integer otherwise.
-					long totalPages;
-					Object o = map.get("totalPages");
-					if(o instanceof Long)
-						totalPages = (Long) o;
-					else // Integer
-						totalPages = (Integer) o;
-					Date modified = (Date) map.get("modified");
-					Map<String, Object> extra = (Map<String, Object>) map.get("extra");
-					Logger.debug(this, "Start URI-table Backward translation");
-					SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>> utab =
-							utrans.rev((Map<String, Object>) map.get("utab"));
-					Logger.debug(this, "Start Term-table Backward translation");
-					SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>> ttab =
-							ttrans.rev((Map<String, Object>) map.get("ttab"));
-
-					return cmpsrl.setSerialiserFor(
-							new ProtoIndex(reqID, name, ownerName, ownerEmail, totalPages, modified, extra, utab, ttab));
-				} catch (ClassCastException e) {
-					// TODO LOW maybe find a way to pass the actual bad data to the exception
-					throw new DataFormatException("Badly formatted data", e, null);
-				} catch (UnsupportedOperationException e) {
-					throw new DataFormatException("Unrecognised format ID", e, map.get("serialFormatUID"), map, "serialFormatUID");
-				}
-
-			} else {
+			long magic = (Long) map.get("serialVersionUID");
+			if (magic != ProtoIndex.serialVersionUID) {
 				throw new DataFormatException("Unrecognised serial ID", null, magic, map, "serialVersionUID");
+			}
+
+			try {
+				// FIXME yet more hacks related to the lack of proper asynchronous FreenetArchiver...
+				ProtoIndexComponentSerialiser cmpsrl =
+						ProtoIndexComponentSerialiser.get((Integer)map.get("serialFormatUID"), subsrl);
+				FreenetURI reqID = (FreenetURI) map.get("reqID");
+				String name = (String) map.get("name");
+				String ownerName = (String) map.get("ownerName");
+				String ownerEmail = (String) map.get("ownerEmail");
+				// FIXME yaml idiocy???
+				//  It seems to give a Long if the number is big enough to need one, and an Integer otherwise.
+				long totalPages;
+				Object o = map.get("totalPages");
+				if(o instanceof Long)
+					totalPages = (Long) o;
+				else // Integer
+					totalPages = (Integer) o;
+				Date modified = (Date) map.get("modified");
+				Map<String, Object> extra = (Map<String, Object>) map.get("extra");
+				Logger.debug(this, "Start URI-table Backward translation");
+				SkeletonBTreeMap<URIKey, SkeletonBTreeMap<FreenetURI, URIEntry>> uriTable =
+						uriTableTranslator.rev((Map<String, Object>) map.get("utab"));
+				Logger.debug(this, "Start Term-table Backward translation");
+				// TODO: reverse translation failed (p1)
+				SkeletonBTreeMap<String, SkeletonBTreeSet<TermEntry>> termTable =
+						termTableTranslator.rev((Map<String, Object>) map.get("ttab"));
+
+				return cmpsrl.setSerialiserFor(
+						new ProtoIndex(reqID, name, ownerName, ownerEmail, totalPages, modified, extra,
+								uriTable, termTable));
+			} catch (ClassCastException e) {
+				// TODO LOW maybe find a way to pass the actual bad data to the exception
+				throw new DataFormatException("Badly formatted data", e, null);
+			} catch (UnsupportedOperationException e) {
+				throw new DataFormatException("Unrecognised format ID", e, map.get("serialFormatUID"), map, "serialFormatUID");
 			}
 		}
 

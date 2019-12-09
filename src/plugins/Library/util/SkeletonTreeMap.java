@@ -331,6 +331,8 @@ implements Map<K, V>, SortedMap<K, V>, SkeletonMap<K, V>, Cloneable {
 			if (keyTranslator == null) {
 				try {
 					for (Map.Entry<String, Object> en: intm.entrySet()) {
+						// TODO: reverse translation failed (p3)
+						//  expect a number, but get a string with numbers and letters
 						map.putGhost((K) en.getKey(), en.getValue());
 					}
 				} catch (ClassCastException e) {
