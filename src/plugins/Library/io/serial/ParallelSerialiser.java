@@ -72,7 +72,7 @@ implements IterableSerialiser<T>,
 				try {
 					Progress p = e.getProgress();
 					p.join();
-					ex = new TaskCompleteException("Task complete: " + p.getSubject());
+					ex = new TaskCompleteException("Task complete: " + p.getSubject()); // ?
 				} catch (InterruptedException e) {
 					ex = new TaskAbortException("Progress join was interrupted", e, true);
 				} catch (RuntimeException e) {

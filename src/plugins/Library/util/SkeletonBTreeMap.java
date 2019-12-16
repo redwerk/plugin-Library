@@ -1407,8 +1407,13 @@ public class SkeletonBTreeMap<K, V> extends BTreeMap<K, V> implements SkeletonMa
 					SafeClosure<SkeletonNode> clo = res._1;
 					TaskAbortException ex = res._2;
 					if (ex != null) {
-						// FIXME HIGH
-						throw new UnsupportedOperationException("SkeletonBTreeMap.update(): PullTask aborted; handler not implemented yet", ex);
+						if (ex instanceof TaskCompleteException) {
+							Logger.normal(this, ex.getMessage(), ex);
+						} else {
+							// FIXME HIGH
+							throw new UnsupportedOperationException("SkeletonBTreeMap.update(): PullTask aborted; " +
+									"handler not implemented yet", ex);
+						}
 					}
 
 					SkeletonNode node = postPullTask(task, ((InflateChildNodes)clo).parent);
