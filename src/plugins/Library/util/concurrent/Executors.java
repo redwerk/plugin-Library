@@ -49,7 +49,7 @@ public class Executors {
 			synchronized (Executors.class) {
 				if (default_exec == null) {
 					default_exec = new ThreadPoolExecutor(
-						1, 0x40, 60, TimeUnit.SECONDS,
+						1, Executors.getReasonableProcesses(), 60, TimeUnit.SECONDS,
 						new LinkedBlockingQueue<Runnable>(),
 						new ThreadPoolExecutor.CallerRunsPolicy()
 					);
@@ -70,4 +70,32 @@ public class Executors {
 
 	private Executors() { }
 
+	private static int reasonableProcesses;
+
+	public static int getReasonableProcesses() {
+		if (reasonableProcesses > 0) {
+			return reasonableProcesses;
+		}
+
+		synchronized (Executors.class) {
+			if (reasonableProcesses > 0) {
+				return reasonableProcesses;
+			}
+
+			reasonableProcesses = reasonableProcesses(Runtime.getRuntime().availableProcessors());
+			return reasonableProcesses;
+		}
+	}
+
+	private static int reasonableProcesses(int availableProcessors) {
+		if (availableProcessors < 4) {
+			return 1;
+		}
+
+		if (availableProcessors < 16) {
+			return availableProcessors - 2;
+		}
+
+		return availableProcessors - 4;
+	}
 }

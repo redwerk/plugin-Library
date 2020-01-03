@@ -29,14 +29,8 @@ import java.util.Stack;
 // TODO NORM tidy this
 import java.util.Queue;
 import java.util.PriorityQueue;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+
 import plugins.Library.util.exec.Progress;
 import plugins.Library.util.exec.ProgressParts;
 import plugins.Library.util.exec.BaseCompositeProgress;
@@ -756,7 +750,7 @@ public class SkeletonBTreeMap<K, V> extends BTreeMap<K, V> implements SkeletonMa
 			synchronized (Executors.class) {
 				if (value_exec == null) {
 					value_exec = new ThreadPoolExecutor(
-						0, 0x40, 60, TimeUnit.SECONDS,
+						0, Executors.getReasonableProcesses(), 60, TimeUnit.SECONDS,
 						new LinkedBlockingQueue<Runnable>(),
 						new ThreadPoolExecutor.CallerRunsPolicy()
 					);
@@ -779,7 +773,7 @@ public class SkeletonBTreeMap<K, V> extends BTreeMap<K, V> implements SkeletonMa
 			synchronized (Executors.class) {
 				if (deflate_exec == null) {
 					deflate_exec = new ThreadPoolExecutor(
-						0, 0x40, 60, TimeUnit.SECONDS,
+						0, Executors.getReasonableProcesses(), 60, TimeUnit.SECONDS,
 						new LinkedBlockingQueue<Runnable>(),
 						new ThreadPoolExecutor.CallerRunsPolicy()
 					);

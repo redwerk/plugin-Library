@@ -585,6 +585,7 @@ public class SpiderIndexUploader {
 	 */
 	protected void mergeToFreenet(ProtoIndex diskToMerge, File diskDir) {
 	    Logger.debug(this, "Merging on-disk index to Freenet: "+diskDir);
+        System.out.println("Merging on-disk index to Freenet: "+diskDir);
 		if(lastUploadURI == null) {
 		    lastUploadURI = readURIFrom(new File(LAST_URL_FILENAME));
 		}
@@ -653,6 +654,7 @@ public class SpiderIndexUploader {
 		        pushBroken = true;
 		    }
 		}
+        System.out.println("Merging on-disk index to Freenet finished: "+diskDir);
 	}
 
 	private void uploadUSKForFreenetIndex(FreenetURI uri) {
